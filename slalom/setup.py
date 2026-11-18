@@ -18,8 +18,8 @@ setup(
     license='MIT',
     entry_points={
         'console_scripts': [
-            # Neuer Node = Datei in slalom/ anlegen + hier eine Zeile, z.B.:
-            # 'cone_detector_opencv = slalom.cone_detector_opencv:main',
+            'sim = slalom.sim:main',
+            # New node = new file in slalom/ + one line here
         ],
     },
 )
