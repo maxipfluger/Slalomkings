@@ -20,14 +20,20 @@ Coordinates: meters, `x` forward, `y` left (right = negative).
 
 ## Setup on the car (inside the robocar container)
     cd /home/projects/ros2_ws/src
-    git clone https://github.com/<user>/slalomkings.git
+    git clone https://github.com/maxipfluger/Slalomkings.git
     cd .. && colcon build --packages-select slalom_interfaces slalom
     source install/setup.bash
 
-## Setup on a laptop (Docker)
-    git clone https://github.com/<user>/slalomkings.git
-    cd slalomkings
-    docker run -it --rm -v "${PWD}:/ws/src/slalomkings" ros:foxy bash
+## Setup on a laptop – Option A: Linux VM with ROS2
+    mkdir -p ~/ws/src && cd ~/ws/src
+    git clone https://github.com/maxipfluger/Slalomkings.git
+    cd ~/ws && colcon build
+    source install/setup.bash
+
+## Setup on a laptop – Option B: Docker (Windows PowerShell)
+    git clone https://github.com/maxipfluger/Slalomkings.git
+    cd Slalomkings
+    docker run -it --rm -v "${PWD}:/ws/src/Slalomkings" ros:foxy bash
     # inside the container:
     cd /ws && colcon build && source install/setup.bash
 
