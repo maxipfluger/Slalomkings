@@ -19,6 +19,8 @@ setup(
     entry_points={
         'console_scripts': [
             'sim = slalom.sim:main',
+            'driver = slalom.driver:main',
+            'save_images = slalom.save_images:main',
             # New node = new file in slalom/ + one line here
         ],
     },

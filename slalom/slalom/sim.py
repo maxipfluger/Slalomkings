@@ -58,14 +58,15 @@ class Sim(Node):
         super().__init__('sim')
         p = self.declare_parameter
         self.wheelbase = p('wheelbase', 0.33).value             # m
-        self.turning_radius = p('turning_radius', 1.0).value    # m, from G4
+        self.turning_radius = p('turning_radius', 0.63).value   # m, measured in G4
         self.max_speed = p('max_speed', 1.0).value              # m/s at linear.x = 1
         self.fov = math.radians(p('fov_deg', 70.0).value)       # camera field of view
         self.max_range = p('max_range', 3.0).value              # m
-        cmd_topic = p('cmd_topic', '/cmd_vel').value            # TODO after G3: real topic name
+        self.steer_sign = p('steer_sign', -1.0).value           # real car: angular.z positive = RIGHT
+        cmd_topic = p('cmd_topic', '/cmd_vel').value            # same topic as the real car (G3)
         cones_topic = p('cones_topic', '/cones/opencv').value
         self.plot = p('plot', True).value
-        self.cones = make_course(p('n_cones', 5).value, p('spacing', 1.5).value,
+        self.cones = make_course(p('n_cones', 5).value, p('spacing', 2.0).value,
                                  p('first_x', 1.5).value, p('wall_offset', 1.0).value,
                                  p('wall_spacing', 0.7).value)
 
@@ -86,9 +87,9 @@ class Sim(Node):
             f'max steer {math.degrees(self.max_steer):.1f} deg')
 
     def on_cmd(self, msg):
-        # Assumption until G3: linear.x = throttle -1..1, angular.z = steering -1..1 (positive = left)
+        # Like the real car (G3): linear.x = throttle -1..1, angular.z = steering -1..1, NEGATIVE = LEFT
         self.speed = max(-1.0, min(1.0, msg.linear.x)) * self.max_speed
-        self.steer = max(-1.0, min(1.0, msg.angular.z)) * self.max_steer
+        self.steer = self.steer_sign * max(-1.0, min(1.0, msg.angular.z)) * self.max_steer
 
     def tick(self):
         self.x, self.y, self.yaw = step(self.x, self.y, self.yaw, self.speed,
@@ -148,4 +149,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
