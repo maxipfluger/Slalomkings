@@ -14,7 +14,8 @@ States
 
 Safety
   - Watchdog: no cone message for `watchdog_s` -> stop
-  - Controller: L1 or circle -> IDLE (stop), triangle -> start
+  - Controller: L1 or circle -> IDLE + an immediate zero command, triangle -> start
+  - Ctrl+C or a crash -> one last zero command before the node exits
   - When not driving, the node sends a few zero commands and then stays
     silent, so the PS controller can drive the car manually.
 
@@ -25,6 +26,7 @@ import math
 
 import rclpy
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Joy
 from slalom_interfaces.msg import Cone, ConeArray
@@ -158,6 +160,7 @@ class Driver(Node):
             if self.brain.state not in ('IDLE', 'DONE'):
                 self.get_logger().warn('STOP by controller')
                 self.brain.stop()
+                self.send(0.0, 0.0)         # stop NOW, even if no cone message comes anymore
                 self.zeros_to_send = 5
         elif pressed(self.btn_start) and self.brain.state in ('IDLE', 'DONE'):
             self.get_logger().info('START by controller')
@@ -202,15 +205,21 @@ class Driver(Node):
 
 
 def main():
-    rclpy.init()
+    # By default rclpy shuts ROS down on Ctrl+C *before* our cleanup runs, so the
+    # final zero below failed ("publisher's context is invalid"). With NO, Ctrl+C
+    # is a plain KeyboardInterrupt and ROS is still alive in the finally block.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = Driver()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    node.send(0.0, 0.0)
-    node.destroy_node()
-    rclpy.shutdown()
+    finally:
+        # The car keeps executing the last command -> always leave a zero behind,
+        # also when the node stops because of an unexpected error.
+        node.send(0.0, 0.0)
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':
