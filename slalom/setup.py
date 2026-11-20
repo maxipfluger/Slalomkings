@@ -21,6 +21,7 @@ setup(
             'sim = slalom.sim:main',
             'driver = slalom.driver:main',
             'save_images = slalom.save_images:main',
+            'detector = slalom.detector:main',
             # New node = new file in slalom/ + one line here
         ],
     },
