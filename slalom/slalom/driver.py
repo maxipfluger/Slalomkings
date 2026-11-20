@@ -23,8 +23,11 @@ Steering convention inside this file: positive = LEFT (ROS standard).
 The real car uses positive = RIGHT -> parameter steering_sign = -1.
 """
 import math
+import signal
+import threading
 
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 from geometry_msgs.msg import Twist
@@ -205,15 +208,20 @@ class Driver(Node):
 
 
 def main():
-    # By default rclpy shuts ROS down on Ctrl+C *before* our cleanup runs, so the
-    # final zero below failed ("publisher's context is invalid"). With NO, Ctrl+C
-    # is a plain KeyboardInterrupt and ROS is still alive in the finally block.
+    # Ctrl+C only raises a flag, checked by the loop below. Not the defaults, because:
+    #  - rclpy's own handler shuts ROS down *before* our cleanup, so the final zero
+    #    could not be published ("publisher's context is invalid");
+    #  - a KeyboardInterrupt landing inside rclpy's message handling can turn into
+    #    a RuntimeError ("Unable to convert call argument") and crash the node.
     rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+    stop_requested = threading.Event()
+    signal.signal(signal.SIGINT, lambda signum, frame: stop_requested.set())
     node = Driver()
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
+        while rclpy.ok() and not stop_requested.is_set():
+            executor.spin_once(timeout_sec=0.1)
     finally:
         # The car keeps executing the last command -> always leave a zero behind,
         # also when the node stops because of an unexpected error.
