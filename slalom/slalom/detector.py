@@ -16,8 +16,8 @@ import numpy as np
 # Farbnummern wie in Cone.msg: 0 yellow, 1 orange, 2 pink, 3 red, 4 blue
 FARBEN = {
     0: ("yellow", (18, 38, 60, 255, 100, 255)),
-    2: ("pink", (140, 171, 60, 255, 70, 255)),
-    3: ("red", (172, 8, 120, 255, 70, 255)),
+    2: ("pink", (140, 175, 60, 255, 70, 255)),
+    3: ("red", (177, 8, 120, 255, 70, 255)),
     4: ("blue", (85, 115, 120, 255, 60, 255)),
 }
 ZEICHENFARBE = {0: (0, 255, 255), 1: (0, 140, 255), 2: (203, 102, 255), 3: (0, 0, 255), 4: (255, 128, 0)}
@@ -169,7 +169,8 @@ def finde(bild, minFlaeche=MINFLAECHE, horizont=HORIZONT):
     for p in pinke:
         for r in rote:
             if beruehrt(r, p) or beruehrt(p, r):
-                weg.add(r if flaeche(r) < flaeche(p) else p)
+                # pink wins (sunlit pink cover looks reddish), unless the pink part is tiny (reflection on a red cone)
+                weg.add(p if flaeche(p) < 0.25 * flaeche(r) else r)
     return [t for t in treffer if t not in weg]
 
 
