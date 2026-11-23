@@ -128,9 +128,12 @@ def test_pink_cone_close_means_done():
 def test_side_switches_after_passing_a_cone():
     brain = SlalomBrain()                               # first cone: pass on the left
     brain.start()
-    assert brain.update([(Cone.YELLOW, 1.0, 0.0)]) > 0  # steer left
-    # nearest cone jumps from 1.0 m to 3.0 m -> the first one was passed
-    assert brain.update([(Cone.YELLOW, 3.0, 0.0)]) < 0  # steer right
+    assert brain.update([(Cone.YELLOW, 0.8, 0.0)]) > 0  # close cone (< pass_max_x): steer left
+    # the close cone leaves the view, only the next one (3 m) is seen: the brain
+    # first waits hold_frames updates, in case it was only a detection flicker
+    for _ in range(brain.hold_frames):
+        assert brain.update([(Cone.YELLOW, 3.0, 0.0)]) > 0  # still left
+    assert brain.update([(Cone.YELLOW, 3.0, 0.0)]) < 0      # confirmed: steer right
     assert brain.passed == 1
 
 
