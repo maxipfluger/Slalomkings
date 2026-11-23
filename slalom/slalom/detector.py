@@ -15,7 +15,7 @@ import numpy as np
 # H min > H max heisst: Bereich geht ueber 179 -> 0 (Rot).
 # Farbnummern wie in Cone.msg: 0 yellow, 1 orange, 2 pink, 3 red, 4 blue
 FARBEN = {
-    0: ("yellow", (18, 38, 60, 255, 100, 255)),
+    0: ("yellow", (18, 48, 60, 255, 100, 255)),
     2: ("pink", (140, 175, 60, 255, 70, 255)),
     3: ("red", (177, 8, 120, 255, 70, 255)),
     4: ("blue", (85, 115, 120, 255, 60, 255)),

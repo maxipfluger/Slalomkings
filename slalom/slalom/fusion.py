@@ -105,7 +105,7 @@ class ConeFusionNode(Node):
 
             if valid_ranges:
                 best_r = min(valid_ranges)
-                if abs(best_r - cam_dist) < max_diff:
+                if best_r - cam_dist < max_diff:  # lidar nearer -> always trust lidar
                     cone.x = float(best_r * math.cos(cam_angle))
                     cone.y = float(best_r * math.sin(cam_angle))
 
