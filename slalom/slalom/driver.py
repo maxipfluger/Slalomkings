@@ -40,7 +40,7 @@ class SlalomBrain:
 
     def __init__(self, wheelbase=0.33, turning_radius=0.63, offset=0.55,
                  first_side_left=True, stop_dist=0.7, new_cone_jump=0.8,
-                 search_steer=0.4, wall_dist=1.0):
+                 search_steer=0.4, wall_dist=1.0, pass_max_x=1.0, pass_cooldown=8, hold_frames=4, ignore_frames=12, clear_frames=25, pink_hold=15, pink_lost_stop=1.0):
         self.wheelbase = wheelbase
         self.max_steer = math.atan(wheelbase / turning_radius)  # rad
         self.offset = offset                # m, lateral distance when passing a cone
@@ -49,6 +49,13 @@ class SlalomBrain:
         self.new_cone_jump = new_cone_jump  # m, jump in distance = old cone passed
         self.search_steer = search_steer    # -1..1, steering while searching
         self.wall_dist = wall_dist          # m, wall cones closer than this count
+        self.pass_max_x = pass_max_x        # m, a cone only counts as passed if it was this close
+        self.ignore_frames = ignore_frames  # updates after a pass in which close cones (the passed one) are ignored
+        self.pink_lost_stop = pink_lost_stop  # m, pink seen closer than this and then lost (too close for the camera) -> stop
+        self.clear_frames = clear_frames    # updates to drive straight past the last yellow cone before turning to pink
+        self.pink_hold = pink_hold          # updates to wait for a flickering yellow cone before turning to pink
+        self.hold_frames = hold_frames      # updates to keep steering if the yellow cone drops out briefly
+        self.pass_cooldown = pass_cooldown  # updates (~11 Hz) before the next pass can count
         self.reset()
 
     def reset(self):
@@ -56,6 +63,15 @@ class SlalomBrain:
         self.side = self.first_side         # +1 = pass on the left, -1 = right
         self.passed = 0
         self.last_x = None
+        self.since_pass = 999
+        self.missing = 0
+        self.last_steer = 0.0
+        self.clear = 0
+        self.pink_recent = 0
+        self.end_phase = False
+        self.pink_close = 0
+        self.last_y = 0.0
+        self.lost_dir = 0              # +1/-1 = cone lost before passing it, it was left/right
 
     def start(self):
         self.reset()
@@ -77,9 +93,22 @@ class SlalomBrain:
         """cones: list of (color, x, y). Returns steering -1..1 (positive = left) or None = stop."""
         if self.state in ('IDLE', 'DONE'):
             return None
+        self.since_pass += 1
+        can_pass = (self.last_x is not None and self.last_x < self.pass_max_x
+                    and self.since_pass >= self.pass_cooldown)
 
         yellow = sorted([(x, y) for c, x, y in cones if c == Cone.YELLOW and x > 0.0])
         pink = [(x, y) for c, x, y in cones if c == Cone.PINK and x > 0.0]
+        self.pink_recent = 30 if pink else max(0, self.pink_recent - 1)
+        if pink and min(pink)[0] < self.pink_lost_stop:
+            self.pink_close = 3             # pink is close ahead
+        elif not pink and self.pink_close > 0:
+            self.pink_close -= 1
+            if self.pink_close == 0 and self.end_phase:   # close pink vanished (below the camera view) -> we are there
+                self.state = 'DONE'
+                return None
+        if self.since_pass < self.ignore_frames:   # just passed -> do not chase the passed cone again
+            yellow = [(x, y) for x, y in yellow if x > self.pass_max_x]
 
         # pink cone close and no yellow cone in front of it -> stop
         if pink:
@@ -90,22 +119,60 @@ class SlalomBrain:
 
         if yellow:
             x, y = yellow[0]
-            if self.last_x is not None and x > self.last_x + self.new_cone_jump:
+            if self.last_x is not None and x > self.last_x + self.new_cone_jump and self.missing < self.hold_frames:
+                # near cone vanished, only a far one is seen -> could be flicker, confirm over a few updates
+                self.missing += 1
+                return self.last_steer
+            if can_pass and x > self.last_x + self.new_cone_jump:
                 self.side = -self.side      # old cone passed -> other side for the next one
                 self.passed += 1
+                self.since_pass = 0
             self.last_x = x
+            self.last_y = y
+            self.lost_dir = 0
             self.state = 'APPROACH'
-            return self.pursuit(x, y + self.side * self.offset)
+            self.missing = 0
+            self.last_steer = self.pursuit(x, y + self.side * self.offset)
+            return self.last_steer
+
+        # yellow cone dropped out for a moment (detection flicker) -> keep the last steering
+        if self.last_x is not None and self.missing < self.hold_frames:
+            self.missing += 1
+            return self.last_steer
 
         if pink:                            # last yellow passed -> drive to the pink cone
+            if self.last_x is not None and self.last_x < self.pass_max_x:
+                # the last yellow cone just left the view -> count it and first drive straight past it
+                self.side = -self.side
+                self.passed += 1
+                self.since_pass = 0
+                self.last_x = None
+                self.clear = self.clear_frames
+                self.end_phase = True
+            if self.last_x is not None and self.missing < self.pink_hold:
+                # yellow cone still ahead but flickering -> keep going for it, do not turn to pink yet
+                self.missing += 1
+                return self.last_steer
+            if self.clear > 0:
+                self.clear -= 1
+                self.state = 'APPROACH'
+                return 0.0
             px, py = min(pink)
             self.state = 'APPROACH'
             return self.pursuit(px, py)
 
         # nothing to follow -> SEARCH
         if self.state == 'APPROACH' and self.last_x is not None:
-            self.side = -self.side          # the cone we followed has left the view = passed
-            self.passed += 1
+            if can_pass:                    # the cone we followed has left the view = passed
+                self.side = -self.side
+                self.passed += 1
+                self.since_pass = 0
+                self.lost_dir = 0
+                if self.pink_recent > 0:     # last yellow cone (pink ahead) is still beside us -> first drive straight past it
+                    self.clear = self.clear_frames
+                    self.end_phase = True
+            else:                           # lost it before passing -> turn back towards it
+                self.lost_dir = 1 if self.last_y > 0 else -1
             self.last_x = None
         self.state = 'SEARCH'
         reds = [x for c, x, y in cones if c == Cone.RED and 0 < x < self.wall_dist]
@@ -114,6 +181,11 @@ class SlalomBrain:
             return -self.search_steer       # left wall close -> right
         if blues and not reds:
             return self.search_steer        # right wall close -> left
+        if self.clear > 0:                  # just passed a cone that is still beside us -> straight, do not cut into it
+            self.clear -= 1
+            return 0.0
+        if self.lost_dir:                   # cone left the view before we passed it -> look for it again
+            return self.lost_dir * self.search_steer
         # we are on the -side of the line now -> steer back towards it
         return self.side * self.search_steer
 
@@ -141,7 +213,14 @@ class Driver(Node):
             stop_dist=p('stop_dist', 0.7).value,
             new_cone_jump=p('new_cone_jump', 0.8).value,
             search_steer=p('search_steer', 0.4).value,
-            wall_dist=p('wall_dist', 1.0).value)
+            wall_dist=p('wall_dist', 1.0).value,
+            pass_max_x=p('pass_max_x', 1.0).value,
+            pass_cooldown=p('pass_cooldown', 8).value,
+            hold_frames=p('hold_frames', 4).value,
+            ignore_frames=p('ignore_frames', 12).value,
+            clear_frames=p('clear_frames', 25).value,
+            pink_hold=p('pink_hold', 15).value,
+            pink_lost_stop=p('pink_lost_stop', 1.0).value)
 
         self.pub = self.create_publisher(Twist, cmd_topic, 10)
         self.create_subscription(ConeArray, cones_topic, self.on_cones, 10)

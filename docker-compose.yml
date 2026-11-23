@@ -1,0 +1,20 @@
+services:
+  ros2-dev:
+    build: .
+    platform: linux/arm64
+    container_name: slalomkings_ros2
+    tty: true
+    stdin_open: true
+    environment:
+      - ROS_DOMAIN_ID=13
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    volumes:
+      - .:/ros2_ws/src/Slalomkings
+      - ros2_build:/ros2_ws/build
+      - ros2_install:/ros2_ws/install
+      - ros2_log:/ros2_ws/log
+
+volumes:
+  ros2_build:
+  ros2_install:
+  ros2_log:
