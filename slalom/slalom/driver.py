@@ -14,7 +14,8 @@ States
 
 Safety
   - Watchdog: no cone message for `watchdog_s` -> stop
-  - Controller: L1 or circle -> IDLE (stop), triangle -> start
+  - Controller: L1 or circle -> IDLE + an immediate zero command, triangle -> start
+  - Ctrl+C or a crash -> one last zero command before the node exits
   - When not driving, the node sends a few zero commands and then stays
     silent, so the PS controller can drive the car manually.
 
@@ -22,9 +23,13 @@ Steering convention inside this file: positive = LEFT (ROS standard).
 The real car uses positive = RIGHT -> parameter steering_sign = -1.
 """
 import math
+import signal
+import threading
 
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Joy
 from slalom_interfaces.msg import Cone, ConeArray
@@ -237,6 +242,7 @@ class Driver(Node):
             if self.brain.state not in ('IDLE', 'DONE'):
                 self.get_logger().warn('STOP by controller')
                 self.brain.stop()
+                self.send(0.0, 0.0)         # stop NOW, even if no cone message comes anymore
                 self.zeros_to_send = 5
         elif pressed(self.btn_start) and self.brain.state in ('IDLE', 'DONE'):
             self.get_logger().info('START by controller')
@@ -281,15 +287,26 @@ class Driver(Node):
 
 
 def main():
-    rclpy.init()
+    # Ctrl+C only raises a flag, checked by the loop below. Not the defaults, because:
+    #  - rclpy's own handler shuts ROS down *before* our cleanup, so the final zero
+    #    could not be published ("publisher's context is invalid");
+    #  - a KeyboardInterrupt landing inside rclpy's message handling can turn into
+    #    a RuntimeError ("Unable to convert call argument") and crash the node.
+    rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
+    stop_requested = threading.Event()
+    signal.signal(signal.SIGINT, lambda signum, frame: stop_requested.set())
     node = Driver()
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    node.send(0.0, 0.0)
-    node.destroy_node()
-    rclpy.shutdown()
+        while rclpy.ok() and not stop_requested.is_set():
+            executor.spin_once(timeout_sec=0.1)
+    finally:
+        # The car keeps executing the last command -> always leave a zero behind,
+        # also when the node stops because of an unexpected error.
+        node.send(0.0, 0.0)
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':
