@@ -1,0 +1,9 @@
+driver:
+  ros__parameters:
+    first_side_left: false
+    throttle: 0.27
+    offset: 0.4
+    stop_dist: 0.7
+    search_steer: 0.8
+    pass_max_x: 1.5
+    clear_frames: 18
