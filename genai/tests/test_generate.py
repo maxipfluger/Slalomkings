@@ -21,11 +21,11 @@ def test_default_values():
     assert ga1.validate_and_merge({}) == {
         "first_side_left": True,
         "throttle": 0.3,
-        "offset": 0.4,
+        "offset": 0.5,
         "stop_dist": 0.7,
         "search_steer": 0.8,
         "pass_max_x": 1.5,
-        "clear_frames": 18,
+        "clear_frames": 6,
     }
 
 

@@ -17,11 +17,11 @@ MODEL = "gemini-3.5-flash-lite"
 DEFAULTS = {
     "first_side_left": True,
     "throttle": 0.3,
-    "offset": 0.4,
+    "offset": 0.5,
     "stop_dist": 0.7,
     "search_steer": 0.8,
     "pass_max_x": 1.5,
-    "clear_frames": 18,
+    "clear_frames": 6,
 }
 
 LIMITS = {
@@ -30,7 +30,7 @@ LIMITS = {
     "stop_dist": (0.50, 1.00),
     "search_steer": (0.50, 0.90),
     "pass_max_x": (1.00, 1.80),
-    "clear_frames": (10, 25),
+    "clear_frames": (4, 25),
 }
 
 RESPONSE_SCHEMA = {
@@ -53,11 +53,11 @@ You translate English driving instructions into ROS2 driver parameter changes.
 Supported parameters:
 - first_side_left: true means pass the first cone on the left.
 - throttle: driving speed, default 0.3.
-- offset: lateral passing distance in meters, default 0.4.
+- offset: lateral passing distance in meters, default 0.5.
 - stop_dist: stopping distance before the pink cone, default 0.7.
 - search_steer: steering strength during cone search, default 0.8.
 - pass_max_x: maximum distance for recognizing a passed cone, default 1.5.
-- clear_frames: frames to continue straight after the last cone, default 18.
+- clear_frames: frames to continue straight after the last cone, default 6.
 
 Rules:
 1. Return ONLY parameters that the user explicitly wants to change.
