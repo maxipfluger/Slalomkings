@@ -36,7 +36,7 @@ class SlalomBrain:
 
     def __init__(self, wheelbase=0.33, turning_radius=0.63, offset=0.55,
                  first_side_left=True, stop_dist=0.7, new_cone_jump=0.8,
-                 search_steer=0.4, wall_dist=1.0, pass_max_x=1.0, pass_cooldown=8, hold_frames=4, ignore_frames=12, clear_frames=25, pink_hold=15, pink_lost_stop=1.0, steer_gain=1.0, min_lookahead=0.0, clear_always=False, side_check=False, side_max_frames=25):
+                 search_steer=0.4, wall_dist=1.0, pass_max_x=1.0, pass_cooldown=8, hold_frames=4, ignore_frames=12, clear_frames=25, pink_hold=15, pink_lost_stop=1.0, steer_gain=1.0, min_lookahead=0.0, clear_always=False, side_check=False, side_max_frames=25, pink_after=0):
         self.wheelbase = wheelbase
         self.max_steer = math.atan(wheelbase / turning_radius)  # rad
         self.offset = offset                # m, lateral distance when passing a cone
@@ -48,6 +48,7 @@ class SlalomBrain:
         self.pass_max_x = pass_max_x        # m, a cone only counts as passed if it was this close
         self.ignore_frames = ignore_frames  # updates after a pass in which close cones (the passed one) are ignored
         self.side_check = side_check        # LiDAR: only turn to the next side when that side is free
+        self.pink_after = pink_after        # pink is only believed after this many passed yellow cones (red wall cones look pink sometimes)
         self.side_max_frames = side_max_frames  # max updates to wait for a free side (then turn anyway)
         self.blocked = {1: False, -1: False}    # set by the node from /scan: +1 = left, -1 = right
         self.clear_always = clear_always    # drive straight past EVERY cone that left the view, not only the last one
@@ -101,7 +102,7 @@ class SlalomBrain:
                     and self.since_pass >= self.pass_cooldown)
 
         yellow = sorted([(x, y) for c, x, y in cones if c == Cone.YELLOW and x > 0.0])
-        pink = [(x, y) for c, x, y in cones if c == Cone.PINK and x > 0.0]
+        pink = [(x, y) for c, x, y in cones if c == Cone.PINK and x > 0.0] if self.passed >= self.pink_after else []
         self.pink_recent = 30 if pink else max(0, self.pink_recent - 1)
         if pink and min(pink)[0] < self.pink_lost_stop:
             self.pink_close = 3             # pink is close ahead
@@ -473,7 +474,8 @@ class Driver(Node):
             min_lookahead=p('min_lookahead', 0.0).value,
             clear_always=p('clear_always', False).value,
             side_check=p('side_check', False).value,
-            side_max_frames=p('side_max_frames', 25).value)
+            side_max_frames=p('side_max_frames', 25).value,
+            pink_after=p('pink_after', 0).value)
         self.mode = p('mode', 'classic').value          # 'classic' = old logic, 'track' = cone map + path
         if self.mode == 'track':
             self.brain = TrackBrain(dr_speed=p('dr_speed', 0.4).value, switch_x=p('switch_x', 0.35).value,
