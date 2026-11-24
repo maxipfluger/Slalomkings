@@ -5,8 +5,10 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
-from slalom_interfaces.msg import ConeArray
+from slalom_interfaces.msg import Cone, ConeArray
 from std_msgs.msg import Bool
+
+from slalom.tracker import ConeTracker
 
 
 class ConeFusionNode(Node):
@@ -22,6 +24,23 @@ class ConeFusionNode(Node):
         self.declare_parameter('max_range_diff', 1.5)
         self.declare_parameter('safety_stop_dist', 0.30)
         self.declare_parameter('safety_fov_deg', 20.0)
+        # NEW 24.11.: distance only from the LiDAR, camera only colour + direction, LiDAR keeps
+        # tracking cones that left the camera view (slalom/tracker.py). False = old fusion.
+        self.declare_parameter('lidar_track', True)
+        self.declare_parameter('track_yaw_deg', -1.0)    # measured on bag 23.11 (old yaw_offset 5 was wrong)
+        self.declare_parameter('track_max_range', 2.0)   # m, LiDAR points farther away are not used (floor!)
+        self.declare_parameter('track_window_deg', 25.0)
+        self.declare_parameter('track_gate', 0.30)
+        self.declare_parameter('track_max_missed', 5)
+        self.tracker = ConeTracker(
+            yaw_offset_deg=float(self.get_parameter('track_yaw_deg').value),
+            invert=bool(self.get_parameter('invert_lidar').value),
+            max_range=float(self.get_parameter('track_max_range').value),
+            cam_window_deg=float(self.get_parameter('track_window_deg').value),
+            gate=float(self.get_parameter('track_gate').value),
+            max_missed=int(self.get_parameter('track_max_missed').value))
+        self.use_tracker = bool(self.get_parameter('lidar_track').value)
+        self.n_cam = 0
 
         self.latest_scan = None
 
@@ -53,6 +72,8 @@ class ConeFusionNode(Node):
     def scan_callback(self, msg: LaserScan):
         self.latest_scan = msg
         self.check_safety_stop(msg)
+        if self.use_tracker:
+            self.tracker.update_scan(msg.angle_min, msg.angle_increment, msg.range_min, msg.range_max, msg.ranges)
 
     def check_safety_stop(self, scan: LaserScan):
         stop_dist = float(self.get_parameter('safety_stop_dist').value)
@@ -74,6 +95,22 @@ class ConeFusionNode(Node):
         self.stop_pub.publish(stop_msg)
 
     def cones_callback(self, msg: ConeArray):
+        if self.use_tracker:
+            out = ConeArray()
+            out.header = msg.header
+            for color, x, y, conf in self.tracker.update_camera([(c.color, c.x, c.y) for c in msg.cones]):
+                c = Cone()
+                c.color = int(color)
+                c.x = float(x)
+                c.y = float(y)
+                c.confidence = float(conf)
+                out.cones.append(c)
+            self.fused_pub.publish(out)
+            self.n_cam += 1
+            if self.n_cam % 50 == 0:
+                txt = ', '.join(f'{c.color}:({c.x:.2f},{c.y:+.2f}){"L" if c.confidence > 0.9 else "C"}' for c in out.cones)
+                self.get_logger().info(f'{len(out.cones)} cones (L=LiDAR, C=camera only): {txt}')
+            return
         if self.latest_scan is None:
             self.fused_pub.publish(msg)
             return

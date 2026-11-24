@@ -23,6 +23,7 @@ setup(
             'save_images = slalom.save_images:main',
             'detector = slalom.detector:main',
             'fusion = slalom.fusion:main',
+            'ai_detector = slalom.ai_detector:main',
         ],
     },
 )
