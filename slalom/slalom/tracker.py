@@ -146,8 +146,10 @@ class ConeTracker:
                 da = abs(_wrap(math.atan2(c[1], c[0]) - ang))
                 dr = math.hypot(c[0], c[1])
                 if da < self.cam_window and abs(dr - dist) < self.cam_tol * dist + 0.2:
-                    if i not in best or da < best[i][0]:
-                        best[i] = (da, j)
+                    # cost: direction + distance (a far wall cone behind a slalom cone must not take its cluster)
+                    cost = da + 0.5 * abs(dr - dist) / max(dist, 0.3)
+                    if i not in best or cost < best[i][0]:
+                        best[i] = (cost, j)
         owner = {}         # candidate j -> camera cone with the smallest angle difference
         for i, (da, j) in best.items():
             if j not in owner or da < best[owner[j]][0]:
