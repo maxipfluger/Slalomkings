@@ -28,12 +28,33 @@ def letterbox(img):
     return out, s, dx, dy
 
 
+class Model:
+    """onnxruntime if installed (needed on the car: OpenCV 4.6 cannot read YOLO11), else OpenCV DNN."""
+
+    def __init__(self, path):
+        try:
+            import onnxruntime as ort
+            self.sess = ort.InferenceSession(path, providers=['CPUExecutionProvider'])
+            self.inp = self.sess.get_inputs()[0].name
+            self.net = None
+            self.backend = 'onnxruntime'
+        except ImportError:
+            self.sess = None
+            self.net = cv2.dnn.readNetFromONNX(path)
+            self.backend = 'opencv'
+
+    def forward(self, blob):
+        if self.sess is not None:
+            return self.sess.run(None, {self.inp: blob})[0]
+        self.net.setInput(blob)
+        return self.net.forward()
+
+
 def detect(net, img, conf_th=0.4, iou_th=0.5):
     """BGR image -> list of (cone colour, conf, x, y, w, h) in pixels of the original image."""
     lb, s, dx, dy = letterbox(img)
     blob = cv2.dnn.blobFromImage(lb, 1 / 255.0, (SIZE, SIZE), swapRB=True)
-    net.setInput(blob)
-    out = net.forward()[0]           # (8, 3549): cx, cy, w, h, 4 class scores
+    out = net.forward(blob)[0]       # (8, 3549): cx, cy, w, h, 4 class scores
     if out.shape[0] > out.shape[1]:
         out = out.T
     scores = out[4:]
@@ -80,14 +101,14 @@ def main(args=None):
             self.hoehe = p('cone_height', 0.17).value
             self.max_dist = p('max_dist', 3.0).value
             self.period = 1.0 / p('max_rate', 5.0).value    # Hz, limit CPU load on the Pi
-            self.net = cv2.dnn.readNetFromONNX(model)
+            self.net = Model(model)
             self.pub = self.create_publisher(ConeArray, p('cones_topic', '/cones/ai').value, 10)
             self.create_subscription(Image, p('image_topic', '/camera/color/image_raw').value,
                                      self.neuesBild, qos_profile_sensor_data)
             self.last = 0.0
             self.n = 0
             self.dt_sum = 0.0
-            self.get_logger().info('AI detector (YOLO11n) laeuft -> /cones/ai, Modell ' + model)
+            self.get_logger().info(f'AI detector (YOLO11n, {self.net.backend}) laeuft -> /cones/ai, Modell ' + model)
 
         def neuesBild(self, msg):
             now = time.monotonic()
@@ -134,7 +155,7 @@ def main(args=None):
 
 if __name__ == '__main__':
     if len(sys.argv) > 2 and not sys.argv[1].startswith('--'):
-        net = cv2.dnn.readNetFromONNX(sys.argv[1])
+        net = Model(sys.argv[1])
         img = cv2.imread(sys.argv[2])
         for d in detect(net, img):
             print(NAMES[d[0]], f'{d[1]:.2f}', [round(v) for v in d[2:]])
