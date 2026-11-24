@@ -21,10 +21,11 @@ def _wrap(a):
 
 
 class Track:
-    __slots__ = ('color', 'x', 'y', 'missed', 'cam_age', 'id')
+    __slots__ = ('color', 'x', 'y', 'missed', 'cam_age', 'id', 'votes')
 
     def __init__(self, color, x, y, tid):
         self.color, self.x, self.y = color, x, y
+        self.votes = {}     # colour -> how often the camera saw this colour here (majority wins, no flicker)
         self.missed = 0     # scans without a LiDAR candidate near the track
         self.cam_age = 0    # camera frames since the camera last saw it
         self.id = tid
@@ -33,7 +34,7 @@ class Track:
 class ConeTracker:
     def __init__(self, yaw_offset_deg=-1.0, invert=False, min_range=0.15, max_range=2.0,
                  split_dist=0.10, max_width=0.25, cam_window_deg=25.0, cam_tol=0.6,
-                 gate=0.30, max_missed=5, drop_x=-0.2, merge_dist=0.25, self_box_x=0.35, self_box_y=0.12):
+                 gate=0.30, max_missed=5, drop_x=-0.2, cam_max_age=40, merge_dist=0.25, self_box_x=0.35, self_box_y=0.12):
         self.yaw = math.radians(yaw_offset_deg)
         self.invert = invert
         self.min_range = min_range        # m, closer = own car
@@ -44,6 +45,7 @@ class ConeTracker:
         self.cam_tol = cam_tol            # LiDAR candidate may differ this much (relative) from the camera distance
         self.gate = gate                  # m, candidate this close to a track = same cone
         self.max_missed = max_missed      # scans without candidate -> track dropped
+        self.cam_max_age = cam_max_age    # camera frames (~4 s) without camera confirmation -> dropped (no ghosts)
         self.drop_x = drop_x              # m, tracks behind the car are dropped
         self.merge_dist = merge_dist
         self.self_box_x = self_box_x      # own car / LiDAR mount: |x| < box_x and |y| < box_y ignored
@@ -130,13 +132,29 @@ class ConeTracker:
 
     def update_camera(self, cones):
         """cones: list of (color, x, y) from the camera.
-        Returns the cones for the driver: list of (color, x, y, confidence)."""
+        Returns the cones for the driver: list of (color, x, y, confidence).
+        Matching is global and unique: every LiDAR candidate gets at most one camera cone,
+        best angle match first (so a wall cone next to a slalom cone cannot steal its colour)."""
         for tr in self.tracks:
             tr.cam_age += 1
         out = []
-        seen = set()
-        for color, x, y in cones:
-            c = self.lidar_for(x, y)
+        best = {}          # camera cone i -> (angle diff, candidate j): only its BEST candidate counts
+        for i, (color, x, y) in enumerate(cones):
+            ang = math.atan2(y, x)
+            dist = math.hypot(x, y)
+            for j, c in enumerate(self.candidates):
+                da = abs(_wrap(math.atan2(c[1], c[0]) - ang))
+                dr = math.hypot(c[0], c[1])
+                if da < self.cam_window and abs(dr - dist) < self.cam_tol * dist + 0.2:
+                    if i not in best or da < best[i][0]:
+                        best[i] = (da, j)
+        owner = {}         # candidate j -> camera cone with the smallest angle difference
+        for i, (da, j) in best.items():
+            if j not in owner or da < best[owner[j]][0]:
+                owner[j] = i
+        match = {i: self.candidates[j] for j, i in owner.items()}
+        for i, (color, x, y) in enumerate(cones):
+            c = match.get(i)
             if c is None:
                 ang = math.atan2(y, x)
                 if not any(abs(_wrap(math.atan2(t.y, t.x) - ang)) < self.cam_window for t in self.tracks):
@@ -151,9 +169,9 @@ class ConeTracker:
                 tr = Track(color, c[0], c[1], self.next_id)
                 self.next_id += 1
                 self.tracks.append(tr)
-            tr.color = color
+            tr.votes[color] = tr.votes.get(color, 0) + 1
+            tr.color = max(tr.votes, key=tr.votes.get)
             tr.cam_age = 0
-            seen.add(tr.id)
         self._cleanup()
         for t in self.tracks:
             if t.x > 0.0:
@@ -163,7 +181,7 @@ class ConeTracker:
     def _cleanup(self):
         keep = []
         for tr in self.tracks:
-            if tr.x < self.drop_x or tr.missed > self.max_missed:
+            if tr.x < self.drop_x or tr.missed > self.max_missed or tr.cam_age > self.cam_max_age:
                 continue
             if any(math.hypot(k.x - tr.x, k.y - tr.y) < self.merge_dist for k in keep):
                 continue

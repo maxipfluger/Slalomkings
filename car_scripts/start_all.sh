@@ -12,7 +12,10 @@ sleep 3
 # TRACK_RANGE = how far the LiDAR may look (2.0 while it hits the floor at ~2.2 m; 3.5 when it is level)
 TRACK_RANGE=${TRACK_RANGE:-2.0}
 nohup ros2 run slalom fusion --ros-args -p lidar_track:=true -p track_yaw_deg:=-1.0 -p track_max_range:=$TRACK_RANGE -p yaw_offset_deg:=5.0 > /home/projects/logs/fusion.log 2>&1 &
-nohup ros2 run slalom ai_detector > /home/projects/logs/ai.log 2>&1 &
+# YOLO only with AI=1 (24.11: Pi rebooted 3x while YOLO ran during driving)
+if [ "${AI:-0}" = "1" ]; then
+  nohup ros2 run slalom ai_detector > /home/projects/logs/ai.log 2>&1 &
+fi
 sleep 3
 grep -q "Opened joystick" /home/projects/logs/base.log && echo "Controller OK" || echo "ACHTUNG: Controller nicht gefunden"
 grep -q "No devices found" /home/projects/logs/base.log && echo "ACHTUNG: Kamera nicht gefunden" || echo "Kamera OK"
