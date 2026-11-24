@@ -232,7 +232,7 @@ def test_main_success(monkeypatch):
         sys, "argv", ["generate.py", "Drive slower"]
     )
     monkeypatch.setattr(
-        ga1, "call_gemini", lambda prompt: {"throttle": 0.25}
+        ga1, "call_gemini", lambda prompt: {"throttle": 0.3}
     )
 
     captured = {}
@@ -245,7 +245,7 @@ def test_main_success(monkeypatch):
     monkeypatch.setattr(ga1, "save_yaml", fake_save)
 
     assert ga1.main() == 0
-    assert captured["parameters"]["throttle"] == 0.25
+    assert captured["parameters"]["throttle"] == 0.3
     assert captured["path"].name == "genai.yaml"
 
 

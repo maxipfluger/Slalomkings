@@ -25,7 +25,7 @@ DEFAULTS = {
 }
 
 LIMITS = {
-    "throttle": (0.20, 0.40),
+    "throttle": (0.27, 0.40),
     "offset": (0.30, 0.60),
     "stop_dist": (0.50, 1.00),
     "search_steer": (0.50, 0.90),
@@ -66,8 +66,8 @@ Rules:
 4. Interpret left/right instructions as first_side_left when referring
    to the first cone.
 5. Interpret qualitative speed requests relative to the default throttle of 0.3:
-   - "a bit slower" or "slightly slower": prefer 0.25.
-   - "much slower": prefer 0.20.
+   - "a bit slower" or "slightly slower": prefer 0.28.
+   - "much slower": prefer 0.27 (minimum: below 0.27 the motor stutters).
    - "a bit faster" or "slightly faster": prefer 0.35.
    - "much faster": prefer 0.40.
    - Never interpret "a bit" as the minimum or maximum throttle.
