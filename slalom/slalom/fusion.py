@@ -32,13 +32,19 @@ class ConeFusionNode(Node):
         self.declare_parameter('track_window_deg', 25.0)
         self.declare_parameter('track_gate', 0.30)
         self.declare_parameter('track_max_missed', 5)
+        # 25.11. for YOLO (/cones/ai): ghost filter + YOLO calls the pink cone 'red' most of the time
+        # (bag t13: pink 9x, red 74x). Only use red_as_pink WITHOUT red wall cones!
+        self.declare_parameter('cam_only_min_dist', 0.0)
+        self.declare_parameter('red_as_pink', False)
+        self.red_as_pink = bool(self.get_parameter('red_as_pink').value)
         self.tracker = ConeTracker(
             yaw_offset_deg=float(self.get_parameter('track_yaw_deg').value),
             invert=bool(self.get_parameter('invert_lidar').value),
             max_range=float(self.get_parameter('track_max_range').value),
             cam_window_deg=float(self.get_parameter('track_window_deg').value),
             gate=float(self.get_parameter('track_gate').value),
-            max_missed=int(self.get_parameter('track_max_missed').value))
+            max_missed=int(self.get_parameter('track_max_missed').value),
+            cam_only_min_dist=float(self.get_parameter('cam_only_min_dist').value))
         self.use_tracker = bool(self.get_parameter('lidar_track').value)
         self.n_cam = 0
 
@@ -98,7 +104,8 @@ class ConeFusionNode(Node):
         if self.use_tracker:
             out = ConeArray()
             out.header = msg.header
-            for color, x, y, conf in self.tracker.update_camera([(c.color, c.x, c.y) for c in msg.cones]):
+            cam = [(Cone.PINK if (self.red_as_pink and c.color == Cone.RED) else c.color, c.x, c.y) for c in msg.cones]
+            for color, x, y, conf in self.tracker.update_camera(cam):
                 c = Cone()
                 c.color = int(color)
                 c.x = float(x)

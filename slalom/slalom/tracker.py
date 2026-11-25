@@ -34,7 +34,8 @@ class Track:
 class ConeTracker:
     def __init__(self, yaw_offset_deg=-1.0, invert=False, min_range=0.15, max_range=2.0,
                  split_dist=0.10, max_width=0.25, cam_window_deg=25.0, cam_tol=0.6,
-                 gate=0.30, max_missed=5, drop_x=-0.2, cam_max_age=40, merge_dist=0.25, self_box_x=0.35, self_box_y=0.12):
+                 gate=0.30, max_missed=5, drop_x=-0.2, cam_max_age=40, merge_dist=0.25, self_box_x=0.35, self_box_y=0.12,
+                 cam_only_min_dist=0.0):
         self.yaw = math.radians(yaw_offset_deg)
         self.invert = invert
         self.min_range = min_range        # m, closer = own car
@@ -50,6 +51,9 @@ class ConeTracker:
         self.merge_dist = merge_dist
         self.self_box_x = self_box_x      # own car / LiDAR mount: |x| < box_x and |y| < box_y ignored
         self.self_box_y = self_box_y
+        # 25.11.: camera cone closer than this WITHOUT a LiDAR cluster = ghost (the LiDAR sees every real cone
+        # that close). YOLO showed a ghost yellow at 0.6 m after every pass (bag t12/t13). 0 = off (OpenCV).
+        self.cam_only_min_dist = cam_only_min_dist
         self.tracks = []
         self.candidates = []
         self.next_id = 0
@@ -159,6 +163,8 @@ class ConeTracker:
             c = match.get(i)
             if c is None:
                 ang = math.atan2(y, x)
+                if math.hypot(x, y) < self.cam_only_min_dist:
+                    continue                          # close but no LiDAR cluster -> ghost
                 if not any(abs(_wrap(math.atan2(t.y, t.x) - ang)) < self.cam_window for t in self.tracks):
                     out.append((color, x, y, 0.5))   # too far / not seen by the LiDAR -> camera distance
                 continue

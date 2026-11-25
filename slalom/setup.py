@@ -24,6 +24,7 @@ setup(
             'detector = slalom.detector:main',
             'fusion = slalom.fusion:main',
             'ai_detector = slalom.ai_detector:main',
+            'oak_ai = slalom.oak_ai:main',
         ],
     },
 )
